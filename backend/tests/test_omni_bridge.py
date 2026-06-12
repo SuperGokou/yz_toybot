@@ -20,10 +20,11 @@ class FakeConversation:
     ``close``. The injected callback's ``on_event`` is fed dict events.
     """
 
-    def __init__(self, model, callback, url):
+    def __init__(self, model, callback, url, api_key=None):
         self.model = model
         self.callback = callback
         self.url = url
+        self.api_key = api_key
         self.sent_audio = []
         self.sent_video = []
         self.session = None
@@ -80,36 +81,103 @@ async def test_bridge_forwards_image():
     assert bridge._conv.sent_video == [base64.b64encode(b"JPEGDATA").decode()]
 
 
-async def test_bridge_emits_audio_and_transcript_events():
+async def test_bridge_emits_audio_event():
     bridge = _make_bridge(instructions="x")
     await bridge.connect()
-    # Simulate SDK pushing events on its own thread. on_event takes a single dict.
     bridge._conv.callback.on_event(
         {"type": "response.audio.delta", "delta": base64.b64encode(b"PCM").decode()}
     )
-    bridge._conv.callback.on_event(
-        {"type": "response.audio_transcript.done", "transcript": "你好小明"}
-    )
-    out1 = await asyncio.wait_for(bridge.events(), 1)
-    out2 = await asyncio.wait_for(bridge.events(), 1)
-    by_kind = {out1["kind"]: out1, out2["kind"]: out2}
-    assert "audio" in by_kind and "transcript" in by_kind
-    assert by_kind["audio"]["data"] == b"PCM"
-    assert by_kind["transcript"]["text"] == "你好小明"
+    out = await asyncio.wait_for(bridge.events(), 1)
+    assert out["kind"] == "audio"
+    assert out["data"] == b"PCM"
 
 
-async def test_bridge_emits_user_transcription_event():
+async def test_bridge_accumulates_transcript_deltas_and_flushes_on_done():
+    """Real SDK emits ``response.audio_transcript.delta`` increments; the full
+    transcript must be assembled and flushed on ``...transcript.done``."""
     bridge = _make_bridge(instructions="x")
     await bridge.connect()
     bridge._conv.callback.on_event(
-        {
-            "type": "conversation.item.input_audio_transcription.completed",
-            "transcript": "我画了一只猫",
-        }
+        {"type": "response.audio_transcript.delta", "delta": "你好"}
     )
+    bridge._conv.callback.on_event(
+        {"type": "response.audio_transcript.delta", "delta": "小明"}
+    )
+    bridge._conv.callback.on_event({"type": "response.audio_transcript.done"})
     ev = await asyncio.wait_for(bridge.events(), 1)
-    assert ev["kind"] == "user_transcript"
+    assert ev["kind"] == "transcript"
+    assert ev["text"] == "你好小明"
+
+
+async def test_bridge_flushes_transcript_on_response_done_when_no_transcript_done():
+    """Some SDK versions are delta-only and never emit ``...transcript.done``;
+    the accumulated transcript must still flush on ``response.done``."""
+    bridge = _make_bridge(instructions="x")
+    await bridge.connect()
+    bridge._conv.callback.on_event(
+        {"type": "response.audio_transcript.delta", "delta": "我"}
+    )
+    bridge._conv.callback.on_event(
+        {"type": "response.audio_transcript.delta", "delta": "画了一只猫"}
+    )
+    bridge._conv.callback.on_event({"type": "response.done"})
+    ev = await asyncio.wait_for(bridge.events(), 1)
+    assert ev["kind"] == "transcript"
     assert ev["text"] == "我画了一只猫"
+
+
+async def test_bridge_transcript_buffer_resets_between_responses():
+    """After a flush the buffer is cleared so the next response starts fresh."""
+    bridge = _make_bridge(instructions="x")
+    await bridge.connect()
+    bridge._conv.callback.on_event(
+        {"type": "response.audio_transcript.delta", "delta": "第一句"}
+    )
+    bridge._conv.callback.on_event({"type": "response.done"})
+    first = await asyncio.wait_for(bridge.events(), 1)
+    assert first["text"] == "第一句"
+
+    bridge._conv.callback.on_event(
+        {"type": "response.audio_transcript.delta", "delta": "第二句"}
+    )
+    bridge._conv.callback.on_event({"type": "response.done"})
+    second = await asyncio.wait_for(bridge.events(), 1)
+    assert second["text"] == "第二句"
+
+
+async def test_bridge_empty_transcript_does_not_emit():
+    """A ``response.done`` with no accumulated deltas must not emit an empty
+    transcript event."""
+    bridge = _make_bridge(instructions="x")
+    await bridge.connect()
+    bridge._conv.callback.on_event({"type": "response.done"})
+    with pytest.raises(asyncio.TimeoutError):
+        await asyncio.wait_for(bridge.events(), 0.2)
+
+
+async def test_bridge_passes_api_key_to_factory():
+    """CRITICAL: api_key must be threaded through to the SDK conversation."""
+    captured = {}
+
+    def recording_factory(*, model, callback, url, api_key):
+        captured["api_key"] = api_key
+        return FakeConversation(model, callback, url, api_key=api_key)
+
+    bridge = _make_bridge(
+        conversation_factory=recording_factory,
+        api_key="sk-test-123",
+        instructions="x",
+    )
+    await bridge.connect()
+    assert captured["api_key"] == "sk-test-123"
+    assert bridge._conv.api_key == "sk-test-123"
+
+
+async def test_bridge_defaults_empty_api_key():
+    """Default api_key is an empty string when not provided (no crash)."""
+    bridge = _make_bridge(instructions="x")
+    await bridge.connect()
+    assert bridge._conv.api_key == ""
 
 
 async def test_bridge_close_closes_conversation():

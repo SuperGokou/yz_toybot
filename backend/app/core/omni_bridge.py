@@ -21,7 +21,10 @@ Normalized event kinds emitted by ``events()``:
 
 import asyncio
 import base64
+import logging
 from typing import Callable, Optional
+
+logger = logging.getLogger(__name__)
 
 try:  # Real SDK; absent or offline in some test/CI environments.
     from dashscope.audio.qwen_omni import (
@@ -54,17 +57,43 @@ except Exception:  # pragma: no cover - exercised only when SDK is missing
 
 
 # Event type strings emitted by the Qwen-Omni realtime service.
+#
+# Verified against the installed SDK source (dashscope/audio/qwen_omni/
+# omni_realtime.py): the assistant transcript arrives as a stream of
+# ``response.audio_transcript.delta`` events (each carrying an incremental
+# ``delta`` string). The SDK forwards *every* server event to ``on_event``
+# unchanged, but its own internal bookkeeping only references ``delta`` and
+# ``response.done`` — it never references a ``...transcript.done`` event. To be
+# robust to both delta-only and delta+done server behaviour we accumulate the
+# deltas and flush the buffer on EITHER ``...transcript.done`` OR
+# ``response.done``.
 _EVT_AUDIO_DELTA = "response.audio.delta"
-_EVT_ASSISTANT_TRANSCRIPT = "response.audio_transcript.done"
+_EVT_TRANSCRIPT_DELTA = "response.audio_transcript.delta"
+_EVT_TRANSCRIPT_DONE = "response.audio_transcript.done"
+_EVT_RESPONSE_DONE = "response.done"
+# User speech transcription completion: the installed SDK version does NOT emit
+# a user input-audio-transcription event (no such type is referenced anywhere in
+# omni_realtime.py, and the callback only forwards what the server sends). The
+# handling branch below is retained for forward-compatibility but is dormant on
+# this SDK version. Revisit when the SDK/service begins emitting it.
 _EVT_USER_TRANSCRIPT = "conversation.item.input_audio_transcription.completed"
 
 
-def _default_factory(model: str, callback, url: str):
+def _default_factory(model: str, callback, url: str, api_key: str = ""):
     if OmniRealtimeConversation is None:  # pragma: no cover - no SDK installed
         raise RuntimeError(
             "dashscope qwen_omni SDK is not available; inject conversation_factory."
         )
-    return OmniRealtimeConversation(model=model, callback=callback, url=url)
+    # The SDK auto-appends ``?model=<model>`` to the URL, so a configured url must
+    # not already carry one or it would be duplicated. Strip any query string.
+    clean_url = url.split("?", 1)[0] if url else url
+    return OmniRealtimeConversation(
+        model=model,
+        callback=callback,
+        url=clean_url,
+        # SDK falls back to dashscope.api_key when api_key is None.
+        api_key=api_key or None,
+    )
 
 
 class OmniBridge:
@@ -78,19 +107,33 @@ class OmniBridge:
         url: str,
         voice: str,
         instructions: str,
+        api_key: str = "",
     ):
         self._factory = conversation_factory or _default_factory
         self._model = model
         self._url = url
         self._voice = voice
         self._instructions = instructions
+        self._api_key = api_key
         self._queue: asyncio.Queue = asyncio.Queue()
-        self._loop = asyncio.get_event_loop()
+        # The running loop is captured in ``connect()`` (which runs on the
+        # asyncio side) rather than here. ``asyncio.get_event_loop()`` is
+        # deprecated/unreliable in 3.12+ when no loop is running.
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._conv = None
+        # Accumulates ``response.audio_transcript.delta`` text until a flush.
+        self._transcript_buffer: str = ""
 
     # -- internal: thread-safe emit into the asyncio queue --------------------
     def _emit(self, item: dict) -> None:
         self._loop.call_soon_threadsafe(self._queue.put_nowait, item)
+
+    def _flush_transcript(self) -> None:
+        """Emit the accumulated transcript (if any) and reset the buffer."""
+        text = self._transcript_buffer
+        self._transcript_buffer = ""
+        if text:
+            self._emit({"kind": "transcript", "text": text})
 
     def _handle_event(self, message) -> None:
         """Normalize an SDK event payload into a queued item.
@@ -105,14 +148,23 @@ class OmniBridge:
             delta = message.get("delta")
             if delta:
                 self._emit({"kind": "audio", "data": base64.b64decode(delta)})
-        elif event_type == _EVT_ASSISTANT_TRANSCRIPT:
-            self._emit({"kind": "transcript", "text": message.get("transcript", "")})
+        elif event_type == _EVT_TRANSCRIPT_DELTA:
+            # Accumulate incremental assistant transcript text.
+            self._transcript_buffer += message.get("delta", "") or ""
+        elif event_type in (_EVT_TRANSCRIPT_DONE, _EVT_RESPONSE_DONE):
+            # Flush the full assistant transcript. Handling both event types
+            # covers delta+done and delta-only SDK/service behaviour.
+            self._flush_transcript()
         elif event_type == _EVT_USER_TRANSCRIPT:
+            # Dormant on the current SDK version (see _EVT_USER_TRANSCRIPT note).
             self._emit(
                 {"kind": "user_transcript", "text": message.get("transcript", "")}
             )
 
     async def connect(self) -> None:
+        # Capture the running loop here (on the asyncio side) so SDK callback
+        # threads can hand events back via call_soon_threadsafe.
+        self._loop = asyncio.get_running_loop()
         bridge = self
 
         class _CB(OmniRealtimeCallback):
@@ -125,8 +177,19 @@ class OmniBridge:
             def on_event(self, message):
                 bridge._handle_event(message)
 
-        self._conv = self._factory(model=self._model, callback=_CB(), url=self._url)
+        self._conv = self._factory(
+            model=self._model,
+            callback=_CB(),
+            url=self._url,
+            api_key=self._api_key,
+        )
         self._conv.connect()
+        # ``instructions`` is passed through as a kwarg. Per the installed SDK
+        # source, update_session(**kwargs) merges kwargs into the session config
+        # and sends them in the ``session.update`` frame, so the SDK does forward
+        # ``instructions`` to the service. Whether the realtime service honours
+        # the field in session.update (vs. requiring a system message) could not
+        # be confirmed without a live connection — verification status: PENDING.
         self._conv.update_session(
             output_modalities=[MultiModality.AUDIO, MultiModality.TEXT],
             voice=self._voice,
@@ -149,9 +212,15 @@ class OmniBridge:
             if callable(method):
                 method(b64)
                 return
-        # No known image method on this SDK version. Skip silently rather than
-        # crash the realtime loop; audio + text still work.
-        # TODO: revisit if a future SDK renames the image-frame uplink method.
+        # No known image-frame uplink method on this SDK version. The installed
+        # SDK exposes ``append_video`` so this is not expected to trigger; if it
+        # does (version drift), drop the frame but make it observable rather than
+        # silently losing video while audio + text still work.
+        logger.warning(
+            "OmniBridge: no image-frame uplink method found on conversation "
+            "(tried append_video/append_image/append_video_frame); dropping %d-byte frame.",
+            len(jpeg),
+        )
 
     async def events(self) -> dict:
         """Await the next normalized downstream event."""
