@@ -1,0 +1,41 @@
+# KidBot Configuration
+# Child Companion Robot Settings
+
+# API Configuration
+api:
+  deepseek:
+    # API key loaded from .env file (DEEPSEEK_API_KEY)
+    base_url: "https://api.deepseek.com"
+    model: "deepseek-chat"
+
+# Paths
+paths:
+  raw_docs: "data/raw_docs"
+  vector_store: "data/vector_store"
+
+# Robot Personality
+robot:
+  name: "VV"
+  personality: "A 6-year-old curious and friendly robot who loves to learn and play. Speaks in simple, cheerful sentences that children can understand. Always positive and encouraging."
+
+# RAG Settings
+rag:
+  collection_name: "kidbot_knowledge"
+  embedding_model: "all-MiniLM-L6-v2"
+  chunk_size: 500
+  chunk_overlap: 50
+  batch_size: 100
+
+# Audio Settings
+audio:
+  tts_voice: "en-US-AnaNeural"  # Child-friendly voice
+  temp_audio_file: "temp_output.mp3"
+  listen_timeout: 5
+  phrase_timeout: 3
+
+# Voice Security Settings
+voice_security:
+  enabled: true
+  threshold: 0.25
+  owner_embedding_path: "data/voice_prints/owner_embedding.npy"
+  model_save_dir: "saved_models/spkrec"

@@ -4,7 +4,11 @@ __pycache__/
 .venv/
 venv/
 data/vector_store/
+data/voice_prints/
 .env
 config/config.yaml
 .DS_Store
 dist/
+.worktrees/
+test-results/
+playwright-report/
