@@ -18,6 +18,7 @@ from .config import load_config
 from .core.dependencies import init_dependencies, get_llm_client, get_memory_manager
 from .core.response_parser import parse_response
 from .api import api_router
+from .api import realtime as realtime_api
 from .api.chat import detect_input_language
 from .api.parent import load_parent_profile, get_parent_profile_data
 from .services.interactions import load_interactions
@@ -75,6 +76,10 @@ app.add_middleware(
 
 # Include API routes
 app.include_router(api_router)
+
+# Realtime Qwen-Omni WebSocket (/ws/realtime) — registered at root, not /api,
+# so the browser connects to ws://host/ws/realtime per the frontend contract.
+app.include_router(realtime_api.router)
 
 
 # =============================================================================
