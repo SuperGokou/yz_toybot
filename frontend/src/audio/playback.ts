@@ -1,40 +1,51 @@
 const DEFAULT_OUTPUT_SAMPLE_RATE = 24000;
 
-let playbackCtx: AudioContext | null = null;
-
-function getContext(): AudioContext {
-  if (!playbackCtx) {
-    playbackCtx = new AudioContext();
-  }
-  return playbackCtx;
+export interface PcmPlayer {
+  /**
+   * Play a chunk of mono PCM16 audio (as received from the backend, default
+   * 24kHz). Chunks are scheduled back-to-back using an internal cursor so a
+   * burst of frames plays as a continuous stream instead of overlapping at
+   * `currentTime`.
+   */
+  playPcm: (pcm: ArrayBuffer, sampleRate?: number) => void;
+  /** Rewind the scheduling cursor (e.g. on teardown or a new turn). */
+  reset: () => void;
 }
 
 /**
- * Play a chunk of mono PCM16 audio (as received from the backend, default
- * 24kHz) through the Web Audio API. Each chunk is scheduled immediately; the
- * caller is responsible for ordering.
+ * Create a PCM player bound to a specific AudioContext. The caller owns the
+ * context lifecycle (creation and `close()`), which keeps playback resources
+ * tied to the active session instead of a module-level singleton.
  */
-export function playPcm(
-  pcm: ArrayBuffer,
-  sampleRate: number = DEFAULT_OUTPUT_SAMPLE_RATE
-): void {
-  const ctx = getContext();
-  const int16 = new Int16Array(pcm);
-  const float32 = new Float32Array(int16.length);
-  for (let i = 0; i < int16.length; i++) {
-    float32[i] = int16[i] / 0x8000;
+export function createPlayer(ctx: AudioContext): PcmPlayer {
+  let nextPlayTime = 0;
+
+  function playPcm(
+    pcm: ArrayBuffer,
+    sampleRate: number = DEFAULT_OUTPUT_SAMPLE_RATE
+  ): void {
+    const int16 = new Int16Array(pcm);
+    const float32 = new Float32Array(int16.length);
+    for (let i = 0; i < int16.length; i++) {
+      float32[i] = int16[i] / 0x8000;
+    }
+
+    const buffer = ctx.createBuffer(1, float32.length, sampleRate);
+    buffer.copyToChannel(float32, 0);
+
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(ctx.destination);
+
+    // Schedule each chunk after the previous one, but never in the past.
+    const startAt = Math.max(ctx.currentTime, nextPlayTime);
+    source.start(startAt);
+    nextPlayTime = startAt + buffer.duration;
   }
 
-  const buffer = ctx.createBuffer(1, float32.length, sampleRate);
-  buffer.copyToChannel(float32, 0);
+  function reset(): void {
+    nextPlayTime = 0;
+  }
 
-  const source = ctx.createBufferSource();
-  source.buffer = buffer;
-  source.connect(ctx.destination);
-  source.start();
-}
-
-/** Test-only: drop the cached AudioContext so each test starts fresh. */
-export function __resetPlaybackForTests(): void {
-  playbackCtx = null;
+  return { playPcm, reset };
 }
