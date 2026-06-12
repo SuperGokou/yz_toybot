@@ -72,6 +72,24 @@ def test_ws_pushes_transcript_and_audio(monkeypatch):
     assert bridge.audio == [b"\x00"]
 
 
+def test_ws_passes_api_key_from_config_to_bridge(monkeypatch):
+    """CRITICAL: the endpoint must read qwen_omni.api_key from config and pass
+    it into the OmniBridge so the SDK can authenticate."""
+    FakeBridge.instances.clear()
+    monkeypatch.setattr(realtime, "OmniBridge", FakeBridge)
+    monkeypatch.setattr(
+        realtime,
+        "get_config",
+        lambda: {"qwen_omni": {"api_key": "sk-from-config", "model": "m", "voice": "Cherry"}},
+    )
+    client = TestClient(app)
+    with client.websocket_connect("/ws/realtime") as ws:
+        ws.receive_json()  # drain one downstream event so the bridge is built
+
+    bridge = FakeBridge.instances[0]
+    assert bridge.kwargs.get("api_key") == "sk-from-config"
+
+
 def test_ws_relays_image_frames(monkeypatch):
     FakeBridge.instances.clear()
     monkeypatch.setattr(realtime, "OmniBridge", FakeBridge)

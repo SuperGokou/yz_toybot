@@ -17,12 +17,15 @@ forwards bridge events to the browser while the main loop relays uplink frames.
 
 import asyncio
 import base64
+import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.config import get_config
 from app.core.omni_bridge import OmniBridge
 from app.prompts.vv_persona import build_instructions
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -43,6 +46,7 @@ async def realtime_ws(ws: WebSocket):
         url=qo.get("ws_url", "wss://dashscope.aliyuncs.com/api-ws/v1/realtime"),
         voice=qo.get("voice", "Cherry"),
         instructions=build_instructions(),
+        api_key=qo.get("api_key", ""),
     )
     await bridge.connect()
 
@@ -70,8 +74,8 @@ async def realtime_ws(ws: WebSocket):
                     break
         except asyncio.CancelledError:
             raise
-        except Exception as exc:  # pragma: no cover - defensive
-            print(f"[Realtime] downstream pump error: {exc}")
+        except Exception:  # pragma: no cover - defensive
+            logger.exception("Realtime downstream pump error")
 
     down_task = asyncio.create_task(pump_downstream())
     try:
@@ -87,8 +91,8 @@ async def realtime_ws(ws: WebSocket):
                 await bridge.send_image(base64.b64decode(data))
     except WebSocketDisconnect:
         pass
-    except Exception as exc:  # pragma: no cover - defensive
-        print(f"[Realtime] upstream loop error: {exc}")
+    except Exception:  # pragma: no cover - defensive
+        logger.exception("Realtime upstream loop error")
     finally:
         down_task.cancel()
         try:
