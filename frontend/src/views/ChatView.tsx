@@ -4,6 +4,8 @@ import { RobotAvatar } from '../components/RobotAvatar';
 import { MicButton } from '../components/MicButton';
 import { JarvisStatus } from '../components/JarvisStatus';
 import { ChatHistory } from '../components/ChatHistory';
+import { CameraView } from '../components/CameraView';
+import { useRealtimeVision } from '../hooks/useRealtimeVision';
 import { useStore } from '../store/useStore';
 import { api } from '../api/client';
 import { Send, MessageCircle, X } from 'lucide-react';
@@ -30,6 +32,15 @@ export function ChatView() {
   const [conversationActive, setConversationActive] = useState(false);
   const [audioLevel, setAudioLevel] = useState(0);
   const [showMobileChat, setShowMobileChat] = useState(false);
+
+  // Realtime camera + voice loop (Qwen-Omni via backend /ws/realtime).
+  // Downstream transcript is appended to the chat history as a VV reply.
+  const vision = useRealtimeVision(
+    useCallback(
+      (text: string) => addMessage({ role: 'assistant', content: text }),
+      [addMessage]
+    )
+  );
   
   const inputRef = useRef<HTMLInputElement>(null);
   const hasGreetedRef = useRef(false);
@@ -560,6 +571,21 @@ export function ChatView() {
             {/* Robot Avatar - Smaller on mobile */}
             <div className="scale-75 sm:scale-90 md:scale-100">
               <RobotAvatar imageSrc="/bot.gif" />
+            </div>
+
+            {/* Realtime camera preview + toggle */}
+            <div className="mt-4 sm:mt-6 w-full flex flex-col items-center">
+              <CameraView
+                active={vision.active}
+                videoRef={vision.videoRef}
+                onStart={() => vision.start()}
+                onStop={vision.stop}
+              />
+              {vision.error && (
+                <p className="mt-2 text-xs text-red-500">
+                  摄像头无法访问：{vision.error}
+                </p>
+              )}
             </div>
             
             {/* Mic button and status */}

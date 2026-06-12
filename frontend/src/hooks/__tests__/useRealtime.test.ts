@@ -28,7 +28,7 @@ class MockWS {
 
 describe('useRealtime', () => {
   beforeEach(() => {
-    (global as any).WebSocket = MockWS;
+    (globalThis as any).WebSocket = MockWS;
   });
 
   it('connect() opens a WebSocket to the given url', async () => {
