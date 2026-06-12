@@ -24,6 +24,7 @@ export interface UseRealtimeOptions {
   onAudio?: (pcm: ArrayBuffer) => void;
   onOpen?: () => void;
   onClose?: () => void;
+  onError?: (message: string) => void;
 }
 
 export interface UseRealtimeResult {
@@ -61,8 +62,21 @@ export function useRealtime(
 
     ws.onopen = () => optsRef.current.onOpen?.();
     ws.onclose = () => {
-      wsRef.current = null;
+      // Only clear the ref if this socket is still the active one — a later
+      // connect() may already have replaced it.
+      if (wsRef.current === ws) {
+        wsRef.current = null;
+      }
       optsRef.current.onClose?.();
+    };
+    ws.onerror = () => {
+      // A transport error can fire without a clean close, which would otherwise
+      // strand `wsRef.current` non-null and make the connect() guard reject all
+      // future reconnect attempts. Clear it so the caller can reconnect.
+      if (wsRef.current === ws) {
+        wsRef.current = null;
+      }
+      optsRef.current.onError?.('WebSocket connection error');
     };
     ws.onmessage = (event: MessageEvent) => {
       let msg: { type?: string; text?: string; data?: string };

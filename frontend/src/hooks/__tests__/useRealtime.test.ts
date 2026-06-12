@@ -113,4 +113,29 @@ describe('useRealtime', () => {
     act(() => result.current.disconnect());
     expect(MockWS.last.closed).toBe(true);
   });
+
+  it('onerror clears the socket ref and allows reconnecting', async () => {
+    const onError = vi.fn();
+    const { result } = renderHook(() =>
+      useRealtime('ws://x/ws/realtime', { onError })
+    );
+    await act(async () => {
+      result.current.connect();
+      await Promise.resolve();
+    });
+    const first = MockWS.last;
+
+    // Simulate a transport error: the socket errors without a clean close.
+    act(() => first.onerror?.());
+    expect(onError).toHaveBeenCalledTimes(1);
+
+    // The early-return guard must not block a fresh connection now that the
+    // ref was cleared by the error handler.
+    await act(async () => {
+      result.current.connect();
+      await Promise.resolve();
+    });
+    expect(MockWS.last).not.toBe(first);
+    expect(MockWS.last.url).toBe('ws://x/ws/realtime');
+  });
 });
