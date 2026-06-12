@@ -73,7 +73,13 @@ def apply_env_overrides(config: dict) -> dict:
         if "robot" not in config:
             config["robot"] = {}
         config["robot"]["name"] = os.getenv("ROBOT_NAME")
-    
+
+    # Qwen-Omni Realtime (DashScope) API key
+    if os.getenv("DASHSCOPE_API_KEY"):
+        if "qwen_omni" not in config:
+            config["qwen_omni"] = {}
+        config["qwen_omni"]["api_key"] = os.getenv("DASHSCOPE_API_KEY")
+
     return config
 
 
@@ -109,6 +115,16 @@ def get_default_config() -> dict:
         "voice": {
             "enabled": False,  # Disabled by default in production
             "verification_threshold": 0.75
+        },
+        "qwen_omni": {
+            # API key loaded from env (DASHSCOPE_API_KEY) — never hardcode.
+            "api_key": os.getenv("DASHSCOPE_API_KEY", ""),
+            "model": "qwen3.5-omni-plus-realtime",
+            "voice": "Cherry",
+            "ws_url": "wss://dashscope.aliyuncs.com/api-ws/v1/realtime",
+            "input_sample_rate": 16000,   # browser mic PCM16 uplink
+            "output_sample_rate": 24000,  # Qwen-Omni audio downlink
+            "vision_fps": 1.5,            # camera frame sampling rate
         }
     }
 

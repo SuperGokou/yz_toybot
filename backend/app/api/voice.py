@@ -60,9 +60,13 @@ STT_LANGUAGES = {
 }
 
 
-@router.post("/voice/transcribe")
+# DEPRECATED (yzbot Phase 1): The live Google STT round-trip is superseded by the
+# Qwen-Omni Realtime path (/ws/realtime), which handles speech-to-text inline.
+# The implementation is kept for reference but the route is no longer registered.
+# @router.post("/voice/transcribe")
 async def transcribe_audio(audio: UploadFile = File(...), language: Optional[str] = None):
     """
+    [DEPRECATED — replaced by Qwen-Omni Realtime /ws/realtime]
     Transcribe audio file to text.
 
     Accepts WAV or WebM audio files.
@@ -164,11 +168,15 @@ async def verify_voice(audio: UploadFile = File(...)):
             pass
 
 
-@router.post("/tts")
+# DEPRECATED (yzbot Phase 1): The live Edge TTS round-trip is superseded by the
+# Qwen-Omni Realtime path (/ws/realtime), which streams synthesized voice (PCM16
+# 24kHz) directly. The implementation is kept for reference but not registered.
+# @router.post("/tts")
 async def text_to_speech(text: str, lang: Optional[str] = None):
     """
+    [DEPRECATED — replaced by Qwen-Omni Realtime /ws/realtime]
     Convert text to speech audio with auto language detection.
-    
+
     Supported languages: en (English), zh (Chinese), es (Spanish), ja (Japanese)
     Returns MP3 audio stream.
     """
