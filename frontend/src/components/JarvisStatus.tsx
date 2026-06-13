@@ -4,6 +4,9 @@ import type { JarvisPhase } from '../types';
 
 interface JarvisStatusProps {
   audioLevel?: number;
+  // When a realtime voice/vision session is live, show a simple "对话中"
+  // indicator regardless of the (currently unused) fine-grained phase machine.
+  sessionActive?: boolean;
 }
 
 const PHASE_CONFIG: Record<
@@ -31,12 +34,35 @@ const PHASE_CONFIG: Record<
   },
 };
 
-export function JarvisStatus({ audioLevel = 0 }: JarvisStatusProps) {
+export function JarvisStatus({ audioLevel = 0, sessionActive = false }: JarvisStatusProps) {
   const { jarvisPhase } = useStore();
   const config = PHASE_CONFIG[jarvisPhase];
-  
+
   // Scale audio level for visualization (0-1 range, amplified for visibility)
   const scaledLevel = Math.min(audioLevel * 20, 1);
+
+  // A live realtime session is the primary, always-available signal. Show a
+  // lightweight "对话中" pulse whenever the camera/voice loop is running.
+  if (sessionActive) {
+    return (
+      <motion.div
+        className="flex items-center gap-1.5 sm:gap-2"
+        initial={{ opacity: 0, y: 5 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.2 }}
+      >
+        <motion.div
+          className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full"
+          style={{ backgroundColor: '#10B981' }}
+          animate={{ scale: [1, 1.3, 1], opacity: [1, 0.6, 1] }}
+          transition={{ duration: 1, repeat: Infinity, ease: 'easeInOut' }}
+        />
+        <span className="text-xs sm:text-sm font-medium" style={{ color: '#10B981' }}>
+          对话中
+        </span>
+      </motion.div>
+    );
+  }
 
   return (
     <AnimatePresence>

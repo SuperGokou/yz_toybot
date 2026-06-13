@@ -5,11 +5,13 @@ import { useStore } from '../store/useStore';
 interface MicButtonProps {
   onStart: () => void;
   onStop: () => void;
+  /** When provided, drives the active state directly (realtime session). */
+  active?: boolean;
 }
 
-export function MicButton({ onStart, onStop }: MicButtonProps) {
+export function MicButton({ onStart, onStop, active }: MicButtonProps) {
   const { isListening, jarvisPhase } = useStore();
-  const isActive = isListening || jarvisPhase !== 'idle';
+  const isActive = active ?? (isListening || jarvisPhase !== 'idle');
 
   const handleClick = () => {
     if (isActive) {
