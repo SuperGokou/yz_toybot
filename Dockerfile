@@ -1,5 +1,4 @@
-# syntax=docker/dockerfile:1
-# yzbot — kidsBot vision realtime upgrade. Multi-stage:
+# VV bot — kidsBot vision realtime upgrade. Multi-stage:
 #   1) build the React/Vite frontend
 #   2) run the FastAPI backend (which also serves the built frontend)
 
