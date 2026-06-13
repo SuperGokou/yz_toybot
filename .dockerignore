@@ -1,0 +1,17 @@
+.git
+.worktrees
+**/node_modules
+**/__pycache__
+**/*.pyc
+backend/.venv
+.venv
+venv
+data/vector_store
+data/voice_prints
+frontend/dist
+**/.DS_Store
+*.png
+.env
+config/config.yaml
+docs
+.claude

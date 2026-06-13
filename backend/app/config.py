@@ -74,11 +74,24 @@ def apply_env_overrides(config: dict) -> dict:
             config["robot"] = {}
         config["robot"]["name"] = os.getenv("ROBOT_NAME")
 
-    # Qwen-Omni Realtime (DashScope) API key
-    if os.getenv("DASHSCOPE_API_KEY"):
+    # Qwen-Omni Realtime (DashScope) API key.
+    # Accept DASHSCOPE_API_KEY (canonical) or QWEN_API_KEY (alias) — both name
+    # the same DashScope key used by Qwen-Omni Realtime.
+    dashscope_key = os.getenv("DASHSCOPE_API_KEY") or os.getenv("QWEN_API_KEY")
+    if dashscope_key:
         if "qwen_omni" not in config:
             config["qwen_omni"] = {}
-        config["qwen_omni"]["api_key"] = os.getenv("DASHSCOPE_API_KEY")
+        config["qwen_omni"]["api_key"] = dashscope_key
+
+    # Optional Qwen-Omni overrides (handy for deploys without editing config files).
+    _qwen_env = {
+        "model": os.getenv("QWEN_OMNI_MODEL"),
+        "voice": os.getenv("QWEN_OMNI_VOICE"),
+        "ws_url": os.getenv("QWEN_OMNI_WS_URL"),
+    }
+    for field, value in _qwen_env.items():
+        if value:
+            config.setdefault("qwen_omni", {})[field] = value
 
     return config
 
@@ -117,10 +130,10 @@ def get_default_config() -> dict:
             "verification_threshold": 0.75
         },
         "qwen_omni": {
-            # API key loaded from env (DASHSCOPE_API_KEY) — never hardcode.
-            "api_key": os.getenv("DASHSCOPE_API_KEY", ""),
+            # API key from env: DASHSCOPE_API_KEY (canonical) or QWEN_API_KEY (alias). Never hardcode.
+            "api_key": os.getenv("DASHSCOPE_API_KEY") or os.getenv("QWEN_API_KEY", ""),
             "model": "qwen3.5-omni-plus-realtime",
-            "voice": "Cherry",
+            "voice": "Serena",  # 该模型有效音色: Serena/Sunny/Kiki/Tina(女) Ethan/Dylan/Peter/Aiden(男)
             "ws_url": "wss://dashscope.aliyuncs.com/api-ws/v1/realtime",
             "input_sample_rate": 16000,   # browser mic PCM16 uplink
             "output_sample_rate": 24000,  # Qwen-Omni audio downlink

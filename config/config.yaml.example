@@ -46,7 +46,7 @@ qwen_omni:
   # Never commit a real key. config.yaml is gitignored; this .example is not.
   api_key: ""              # e.g. "sk-xxxx" (or set DASHSCOPE_API_KEY env var)
   model: "qwen3.5-omni-plus-realtime"
-  voice: "Cherry"
+  voice: "Serena"          # 该模型有效女声: Serena(柔和)/Sunny(阳光活泼)/Kiki(可爱)/Tina(默认); 男声: Ethan/Dylan/Peter/Aiden
   # Base realtime WebSocket URL. Do NOT append "?model=..." — the SDK adds the
   # model query parameter automatically (a pre-existing one would be stripped).
   ws_url: "wss://dashscope.aliyuncs.com/api-ws/v1/realtime"

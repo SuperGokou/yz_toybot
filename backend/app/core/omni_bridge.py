@@ -196,6 +196,19 @@ class OmniBridge:
             instructions=self._instructions,
         )
 
+    async def trigger_response(self, instructions: str = "") -> None:
+        """Proactively ask the model to speak, using audio/video sent so far.
+
+        In server_vad mode the service auto-responds to the child's speech; this
+        is for VV to *open the conversation* (or otherwise speak unprompted),
+        e.g. greeting and commenting on what the camera currently shows. Safe to
+        call once a few frames have been buffered. No-op if the SDK conversation
+        object does not expose ``create_response``.
+        """
+        create = getattr(self._conv, "create_response", None)
+        if callable(create):
+            create(instructions=instructions or None)
+
     async def send_audio(self, pcm: bytes) -> None:
         """Forward a PCM16 audio chunk upstream (base64-encoded)."""
         self._conv.append_audio(base64.b64encode(pcm).decode())

@@ -23,6 +23,7 @@ class FakeBridge:
         self.kwargs = kwargs
         self.audio = []
         self.images = []
+        self.opener_instructions = []
         self.closed = False
         # Pre-seed downstream events to be pumped to the client.
         self._events = [
@@ -39,6 +40,9 @@ class FakeBridge:
 
     async def send_image(self, jpeg):
         self.images.append(jpeg)
+
+    async def trigger_response(self, instructions=""):
+        self.opener_instructions.append(instructions)
 
     async def events(self):
         if self._events:

@@ -38,7 +38,7 @@ export function useCamera(): UseCameraResult {
     setActive(false);
   }, []);
 
-  const start = useCallback(async (facing: CameraFacing = 'environment') => {
+  const start = useCallback(async (facing: CameraFacing = 'user') => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: facing },

@@ -1,0 +1,24 @@
+# Render Blueprint for yzbot (kidsBot vision realtime upgrade).
+# One Docker web service: builds the frontend and serves it together with the
+# FastAPI backend (/api/*, /ws/realtime). Camera/mic need HTTPS — Render provides
+# it on *.onrender.com automatically.
+#
+# Deploy: push to GitHub → Render dashboard → New → Blueprint → pick this repo.
+# Then set the DASHSCOPE_API_KEY env var (it is sync:false, i.e. NOT in git).
+services:
+  - type: web
+    name: yzbot
+    runtime: docker
+    plan: free                 # WebSockets work on free; note it spins down when idle
+    region: singapore          # closest Render region to Alibaba DashScope
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/status
+    autoDeploy: true
+    envVars:
+      - key: DASHSCOPE_API_KEY  # set in Render dashboard (your Qwen/DashScope key)
+        sync: false
+      - key: QWEN_OMNI_VOICE    # valid voices: Serena/Sunny/Kiki/Tina/Ethan/Dylan/Peter/Aiden
+        value: Serena
+      # Optional: switch region/endpoint without code changes.
+      # - key: QWEN_OMNI_WS_URL
+      #   value: wss://dashscope.aliyuncs.com/api-ws/v1/realtime
